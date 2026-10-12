@@ -176,7 +176,7 @@ struct close_on_unfocus : Config<bool> {
 
 struct close_on_unfocus_delay_ms : Config<int> {
     static QString name() { return QStringLiteral("close_on_unfocus_delay_ms"); }
-    static Value defaultValue() { return 500; }
+    static Value defaultValue() { return 3000; }
     static const char *description() {
         return "Delay to close the main window when unfocused/deactivated";
     }

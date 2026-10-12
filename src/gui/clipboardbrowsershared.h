@@ -7,6 +7,7 @@
 #include "gui/menuitems.h"
 #include "gui/theme.h"
 
+#include <QByteArray>
 #include <QString>
 
 #include <memory>
@@ -34,6 +35,11 @@ struct ClipboardBrowserShared {
     int saveDelayMsOnItemMoved = 0;
     int saveDelayMsOnItemEdited = 0;
     bool rowIndexFromOne = true;
+    /// Ignore clipboard echoes of an item that was just pasted.
+    bool suppressReaddHasText = false;
+    QString suppressReaddText;
+    QByteArray suppressReaddImage;
+    qint64 suppressReaddUntilMs = 0;
     ItemFactory *itemFactory = nullptr;
     ActionHandler *actions = nullptr;
     NotificationDaemon *notifications = nullptr;

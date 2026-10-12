@@ -34,10 +34,20 @@
 #include "item/itemwidget.h"
 #include "platform/platformnativeinterface.h"
 
+#include "gui/shortcutbutton.h"
+
+#include <QVBoxLayout>
+#include <QChildEvent>
 #include <QDir>
+#include <QDoubleSpinBox>
 #include <QFile>
+#include <QFontComboBox>
+#include <QLabel>
+#include <QListWidget>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QPlainTextEdit>
+#include <QPushButton>
 #include <QScrollArea>
 #include <QTranslator>
 
@@ -121,6 +131,7 @@ ConfigurationManager::ConfigurationManager(const ClipboardBrowserSharedPtr &shar
     ui->setupUi(this);
     initTabIcons();
     connectSlots();
+    initApplyFeedback();
     setWindowIcon(appIcon());
 
     m_tabHistory->spinBoxItems->setMaximum(Config::maxItems);
@@ -139,6 +150,9 @@ ConfigurationManager::ConfigurationManager(const ClipboardBrowserSharedPtr &shar
 
     if (itemFactory)
         m_tabShortcuts->addCommands( itemFactory->commands() );
+
+    watchPreferenceWidget(this);
+    updateApplyButton(false, false);
 }
 
 ConfigurationManager::ConfigurationManager()
@@ -147,7 +161,10 @@ ConfigurationManager::ConfigurationManager()
     ui->setupUi(this);
     initTabIcons();
     connectSlots();
+    initApplyFeedback();
     initOptions();
+    watchPreferenceWidget(this);
+    updateApplyButton(false, false);
 }
 
 ConfigurationManager::~ConfigurationManager()
@@ -285,6 +302,7 @@ void ConfigurationManager::initOptions()
     bind<Config::autocompletion>(m_tabGeneral->checkBoxAutocompleteCommands);
     bind<Config::always_on_top>(m_tabGeneral->checkBoxAlwaysOnTop);
     bind<Config::close_on_unfocus>(m_tabGeneral->checkBoxCloseOnUnfocus);
+    bind<Config::close_on_unfocus_delay_ms>(m_tabGeneral->spinBoxCloseOnUnfocusDelay);
     bind<Config::open_windows_on_current_screen>(m_tabGeneral->checkBoxOpenWindowsOnCurrentScreen);
     bind<Config::transparency_focused>(m_tabLayout->spinBoxTransparencyFocused);
     bind<Config::transparency>(m_tabLayout->spinBoxTransparencyUnfocused);
@@ -365,7 +383,6 @@ void ConfigurationManager::initOptions()
 
     bind<Config::restore_geometry>();
 
-    bind<Config::close_on_unfocus_delay_ms>();
     bind<Config::close_on_unfocus_extra_delay_ms>();
 
     bind<Config::terminate_action_timeout_ms>();
@@ -493,6 +510,8 @@ void ConfigurationManager::loadSettings(AppConfig *appConfig)
     updateTabComboBoxes();
 
     updateOptionsVisibility();
+    updateCloseOnUnfocusDelayEnabled();
+    updateApplyButton(false, false);
 }
 
 void ConfigurationManager::onButtonBoxClicked(QAbstractButton* button)
@@ -504,6 +523,7 @@ void ConfigurationManager::onButtonBoxClicked(QAbstractButton* button)
         AppConfig appConfig;
         apply(&appConfig);
         emit configurationChanged(&appConfig);
+        updateApplyButton(false, true);
         break;
     }
     case QDialogButtonBox::AcceptRole:
@@ -550,6 +570,8 @@ void ConfigurationManager::connectSlots()
             this, &ConfigurationManager::onSpinBoxTrayItemsValueChanged);
     connect(m_tabGeneral->pushButtonChangeEncryptionPassword, &QPushButton::clicked,
             this, &ConfigurationManager::onPushButtonChangeEncryptionPasswordClicked);
+    connect(m_tabGeneral->checkBoxCloseOnUnfocus, &QCheckBox::toggled,
+            this, &ConfigurationManager::updateCloseOnUnfocusDelayEnabled);
 }
 
 void ConfigurationManager::apply(AppConfig *appConfig)
@@ -635,6 +657,108 @@ void ConfigurationManager::done(int result)
     }
 
     QDialog::done(result);
+}
+
+void ConfigurationManager::initApplyFeedback()
+{
+    m_applyStatusLabel = new QLabel(this);
+    m_applyStatusLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    m_applyStatusLabel->setWordWrap(true);
+    if (auto *boxLayout = qobject_cast<QVBoxLayout *>(layout()))
+        boxLayout->insertWidget(boxLayout->count() - 1, m_applyStatusLabel);
+}
+
+void ConfigurationManager::watchPreferenceWidget(QWidget *widget)
+{
+    if (!widget || widget->property("copyq_pref_watched").toBool())
+        return;
+    if (ui->buttonBox && (widget == ui->buttonBox || ui->buttonBox->isAncestorOf(widget)))
+        return;
+    if (widget->objectName() == QLatin1String("lineEditFilter"))
+        return;
+
+    widget->setProperty("copyq_pref_watched", true);
+    widget->installEventFilter(this);
+
+    if (auto *box = qobject_cast<QCheckBox *>(widget)) {
+        connect(box, &QCheckBox::toggled, this, &ConfigurationManager::markPreferencesDirty);
+    } else if (auto *spin = qobject_cast<QSpinBox *>(widget)) {
+        connect(spin, qOverload<int>(&QSpinBox::valueChanged), this, &ConfigurationManager::markPreferencesDirty);
+    } else if (auto *spin = qobject_cast<QDoubleSpinBox *>(widget)) {
+        connect(spin, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ConfigurationManager::markPreferencesDirty);
+    } else if (auto *edit = qobject_cast<QLineEdit *>(widget)) {
+        connect(edit, &QLineEdit::textChanged, this, &ConfigurationManager::markPreferencesDirty);
+    } else if (auto *combo = qobject_cast<QComboBox *>(widget)) {
+        connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this, &ConfigurationManager::markPreferencesDirty);
+    } else if (auto *plain = qobject_cast<QPlainTextEdit *>(widget)) {
+        connect(plain, &QPlainTextEdit::textChanged, this, &ConfigurationManager::markPreferencesDirty);
+    } else if (auto *font = qobject_cast<QFontComboBox *>(widget)) {
+        connect(font, &QFontComboBox::currentFontChanged, this, &ConfigurationManager::markPreferencesDirty);
+    } else if (auto *list = qobject_cast<QListWidget *>(widget)) {
+        connect(list, &QListWidget::itemChanged, this, &ConfigurationManager::markPreferencesDirty);
+    } else if (auto *shortcut = qobject_cast<ShortcutButton *>(widget)) {
+        connect(shortcut, &ShortcutButton::shortcutAdded, this, &ConfigurationManager::markPreferencesDirty);
+        connect(shortcut, &ShortcutButton::shortcutRemoved, this, &ConfigurationManager::markPreferencesDirty);
+    } else if (auto *button = qobject_cast<QPushButton *>(widget)) {
+        for (QWidget *parent = button->parentWidget(); parent; parent = parent->parentWidget()) {
+            if (qobject_cast<ItemOrderList *>(parent)) {
+                connect(button, &QPushButton::clicked, this, &ConfigurationManager::markPreferencesDirty);
+                break;
+            }
+        }
+    }
+
+    const auto children = widget->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly);
+    for (QWidget *child : children)
+        watchPreferenceWidget(child);
+}
+
+void ConfigurationManager::markPreferencesDirty()
+{
+    updateApplyButton(true, false);
+}
+
+void ConfigurationManager::updateApplyButton(bool dirty, bool justApplied)
+{
+    if (m_blockPreferenceDirty)
+        return;
+
+    auto *applyButton = ui->buttonBox->button(QDialogButtonBox::Apply);
+    if (!applyButton)
+        return;
+
+    if (m_applyButtonText.isEmpty())
+        m_applyButtonText = applyButton->text();
+
+    applyButton->setEnabled(dirty);
+    if (justApplied) {
+        applyButton->setText(tr("Applied"));
+        if (m_applyStatusLabel)
+            m_applyStatusLabel->setText(tr("Preferences have been applied."));
+    } else if (dirty) {
+        applyButton->setText(m_applyButtonText);
+        if (m_applyStatusLabel)
+            m_applyStatusLabel->clear();
+    }
+}
+
+void ConfigurationManager::updateCloseOnUnfocusDelayEnabled()
+{
+    const bool enabled = m_tabGeneral->checkBoxCloseOnUnfocus->isChecked();
+    m_tabGeneral->labelCloseOnUnfocusDelay->setEnabled(enabled);
+    m_tabGeneral->spinBoxCloseOnUnfocusDelay->setEnabled(enabled);
+}
+
+bool ConfigurationManager::eventFilter(QObject *watched, QEvent *event)
+{
+    if (event->type() == QEvent::ChildAdded) {
+        auto *childEvent = static_cast<QChildEvent *>(event);
+        if (auto *child = qobject_cast<QWidget *>(childEvent->child()))
+            watchPreferenceWidget(child);
+    }
+
+    Q_UNUSED(watched)
+    return false;
 }
 
 void ConfigurationManager::onCheckBoxMenuTabIsCurrentStateChanged(int state)

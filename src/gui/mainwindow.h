@@ -337,6 +337,12 @@ public:
     void editNewItem();
     /** Paste items to current tab. */
     void pasteItems();
+
+    /**
+     * Paste the nth visible item from the clipboard tab into the previous window.
+     * Index is zero-based and skips group headers.
+     */
+    bool pasteClipboardItem(int indexFromZero);
     /** Copy selected items in current tab. */
     void copyItems();
 
@@ -524,6 +530,12 @@ private:
     void moveDown();
     void moveToTop();
     void moveToBottom();
+
+    void addItemGroup();
+    void toggleItemGroup();
+    void renameItemGroup();
+
+    void suppressReaddingClipboardData(const QVariantMap &data);
 
     void onBrowserCreated(ClipboardBrowser *browser);
     void onBrowserLoaded(ClipboardBrowser *browser);

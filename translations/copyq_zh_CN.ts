@@ -1106,6 +1106,16 @@ press F2 to edit.</source>
         <translation>不聚焦时关闭</translation>
     </message>
     <message>
+        <location filename="../src/ui/configtabgeneral.ui" line="125"/>
+        <source>Close &amp;delay when unfocused:</source>
+        <translation>失焦关闭延时(&amp;D)：</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/configtabgeneral.ui" line="135"/>
+        <source>How long to wait after the main window loses focus before closing it</source>
+        <translation>主窗口失去焦点后，等待多久再关闭</translation>
+    </message>
+    <message>
         <location filename="../src/ui/configtabgeneral.ui" line="123"/>
         <source>Enable to open windows on current screen. Disable to open windows where they were last closed</source>
         <translation>启用以在当前屏幕上打开窗口. 禁用在上次关闭的地方打开窗口</translation>
@@ -1815,6 +1825,16 @@ Set to 0 to disable.</source>
         <location filename="../src/gui/configurationmanager.cpp" line="626"/>
         <source>Language will be changed after application is restarted.</source>
         <translation>更改语言需要重启本应用。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/configurationmanager.cpp" line="735"/>
+        <source>Applied</source>
+        <translation>已应用</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/configurationmanager.cpp" line="737"/>
+        <source>Preferences have been applied.</source>
+        <translation>首选项已应用。</translation>
     </message>
     <message>
         <location filename="../src/ui/configurationmanager.ui" line="20"/>
@@ -2807,6 +2827,36 @@ It will be possible to encrypt and decrypt tab data.</source>
         <source>Do you want to remove tab &lt;strong&gt;%1&lt;/strong&gt;?</source>
         <translation>你想要删除 &lt;strong&gt;%1&lt;/strong&gt; 标签页吗？</translation>
     </message>
+    <message>
+        <location filename="../src/gui/mainwindow.cpp" line="1052"/>
+        <source>Paste Clipboard &amp;Item</source>
+        <translation>粘贴剪贴板条目(&amp;I)</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/mainwindow.cpp" line="1492"/>
+        <source>New Group</source>
+        <translation>新建分组</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/mainwindow.cpp" line="1492"/>
+        <source>Group name:</source>
+        <translation>分组名称：</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/mainwindow.cpp" line="1524"/>
+        <source>Rename Group</source>
+        <translation>重命名分组</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/mainwindow.cpp" line="1240"/>
+        <source>&amp;Remove from Group</source>
+        <translation>移出分组(&amp;R)</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/mainwindow.cpp" line="1244"/>
+        <source>Move into &amp;Group</source>
+        <translation>收入分组(&amp;G)</translation>
+    </message>
 </context>
 <context>
     <name>Proxy</name>
@@ -3191,6 +3241,37 @@ which can be letters, digits, &apos;-&apos; or &apos;_&apos;!</source>
         <source>Shift+F10</source>
         <comment>Default shortcut to open item context menu</comment>
         <translation>Shift+F10</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/menuitems.cpp" line="161"/>
+        <source>Paste Clipboard Item %1</source>
+        <comment>Shortcut to paste nth clipboard item</comment>
+        <translation>粘贴剪贴板条目 %1</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/menuitems.cpp" line="167"/>
+        <source>New &amp;Group</source>
+        <translation>新建分组(&amp;G)</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/menuitems.cpp" line="168"/>
+        <source>Ctrl+Shift+G</source>
+        <translation>Ctrl+Shift+G</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/menuitems.cpp" line="170"/>
+        <source>&amp;Collapse/Expand Group</source>
+        <translation>折叠/展开分组(&amp;C)</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/menuitems.cpp" line="171"/>
+        <source>Ctrl+G</source>
+        <translation>Ctrl+G</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/menuitems.cpp" line="173"/>
+        <source>Rename &amp;Group</source>
+        <translation>重命名分组(&amp;G)</translation>
     </message>
     <message>
         <location filename="../src/gui/menuitems.cpp" line="142"/>

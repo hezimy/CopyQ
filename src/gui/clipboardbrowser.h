@@ -198,6 +198,37 @@ class ClipboardBrowser final : public QListView
         /** Move current item to clipboard. */
         void moveToClipboard();
 
+        /** True when the row is a collapsible group header. */
+        bool isGroupRow(int row) const;
+
+        /** Insert a group header so following items belong to it until the next group. */
+        void insertGroup(const QString &name, int row);
+
+        /** Collapse or expand a group header. */
+        void toggleGroupCollapsed(int row);
+
+        /** Rename a group header. */
+        void renameGroup(int row, const QString &name);
+
+        /** Group header immediately above this row, or -1 when the row is not inside a group. */
+        int groupHeaderForRow(int row) const;
+
+        /** Stored group name for a header row. */
+        QString groupName(int headerRow) const;
+
+        /** Move selected non-header items to the end of the group. Items already in it stay put. */
+        void moveSelectedToGroup(int headerRow);
+
+        /** Move selected items that belong to a group out of every group. */
+        void removeSelectedFromGroup();
+
+        /**
+         * Row of the nth visible clipboard item, skipping group headers
+         * and items hidden by a collapsed group or the current filter.
+         * @return -1 when there is no such item.
+         */
+        int visiblePasteRow(int nth) const;
+
         /** Edit selected unhidden items. */
         void editSelected();
 
@@ -316,6 +347,12 @@ class ClipboardBrowser final : public QListView
          * @return true only if hidden
          */
         bool hideFiltered(int row);
+
+        bool isRowInCollapsedGroup(int row) const;
+
+        void applyGroupFolding();
+
+        QString groupTitle(const QString &name, bool collapsed) const;
 
         /**
          * Connects signals and starts external editor.

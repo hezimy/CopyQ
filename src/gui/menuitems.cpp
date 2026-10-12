@@ -154,6 +154,26 @@ MenuItems menuItems()
                  QObject::tr("Shift+F10", "Default shortcut to open item context menu"),
                  QStringLiteral(""), IconRectangleList );
 
+    for (int i = 0; i < 9; ++i) {
+        const auto id = static_cast<Actions::Id>(static_cast<int>(Actions::Edit_PasteItem1) + i);
+        const int itemNumber = i + 1;
+        addMenuItem( items, id,
+                     QObject::tr("Paste Clipboard Item %1", "Shortcut to paste nth clipboard item").arg(itemNumber),
+                     QStringLiteral("paste_clipboard_item_%1").arg(itemNumber),
+                     QObject::tr("Ctrl+%1").arg(itemNumber),
+                     QStringLiteral("edit-paste"), IconPaste );
+    }
+
+    addMenuItem( items, Actions::Item_NewGroup, QObject::tr("New &Group"),
+                 QStringLiteral("new_group"), QObject::tr("Ctrl+Shift+G"),
+                 QStringLiteral("folder-new"), IconFolderPlus );
+    addMenuItem( items, Actions::Item_ToggleGroup, QObject::tr("&Collapse/Expand Group"),
+                 QStringLiteral("toggle_group"), QObject::tr("Ctrl+G"),
+                 QStringLiteral("folder"), IconFolderOpen );
+    addMenuItem( items, Actions::Item_RenameGroup, QObject::tr("Rename &Group"),
+                 QStringLiteral("rename_group"), QKeySequence(),
+                 QStringLiteral("edit-rename"), IconPenToSquare );
+
     return items;
 }
 

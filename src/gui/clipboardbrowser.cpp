@@ -21,6 +21,7 @@
 #include "item/serialize.h"
 
 #include <QApplication>
+#include <QDateTime>
 #include <QDrag>
 #include <QElapsedTimer>
 #include <QKeyEvent>
@@ -299,9 +300,44 @@ bool ClipboardBrowser::isFiltered(int row) const
 
 bool ClipboardBrowser::hideFiltered(int row)
 {
+    if (isGroupRow(row)) {
+        const bool hide = isFiltered(row);
+        setRowHidden(row, hide);
+        return hide;
+    }
+
+    const auto filter = d.itemFilter();
+    const bool filtering = filter && !filter->matchesAll();
+    if (!filtering && isRowInCollapsedGroup(row)) {
+        setRowHidden(row, true);
+        return true;
+    }
+
     const bool hide = isFiltered(row);
     setRowHidden(row, hide);
     return hide;
+}
+
+bool ClipboardBrowser::isRowInCollapsedGroup(int row) const
+{
+    for (int i = row - 1; i >= 0; --i) {
+        if (!isGroupRow(i))
+            continue;
+        const QVariantMap data = index(i).data(contentType::data).toMap();
+        return data.value(mimeItemGroupCollapsed).toByteArray() == "1";
+    }
+    return false;
+}
+
+void ClipboardBrowser::applyGroupFolding()
+{
+    for (int row = 0; row < length(); ++row)
+        hideFiltered(row);
+}
+
+QString ClipboardBrowser::groupTitle(const QString &name, bool collapsed) const
+{
+    return (collapsed ? QStringLiteral("▶ ") : QStringLiteral("▼ ")) + name;
 }
 
 bool ClipboardBrowser::startEditor(QObject *editor)
@@ -456,6 +492,12 @@ void ClipboardBrowser::connectModelAndDelegate()
 
     connect( &m, &QAbstractItemModel::rowsInserted,
              this, &ClipboardBrowser::onRowsInserted);
+    connect( &m, &QAbstractItemModel::rowsRemoved,
+             this, [this]() { applyGroupFolding(); } );
+    connect( &m, &QAbstractItemModel::rowsMoved,
+             this, [this]() { applyGroupFolding(); } );
+    connect( &m, &QAbstractItemModel::dataChanged,
+             this, [this]() { applyGroupFolding(); } );
 
     // Item count change
     connect( &m, &QAbstractItemModel::rowsInserted,
@@ -817,6 +859,8 @@ void ClipboardBrowser::onRowsInserted(const QModelIndex &, int first, int last)
         setCurrentIndex(current);
         selectionModel()->select(selection, QItemSelectionModel::ClearAndSelect);
     }
+
+    applyGroupFolding();
 }
 
 void ClipboardBrowser::onItemCountChanged()
@@ -1262,8 +1306,7 @@ void ClipboardBrowser::filterItems(const ItemFilterPtr &filter)
         filterBatch(++m_lastFilterId, index(0));
     } else {
         // Show all items if filter is cleared or invalid.
-        for ( int row = 0; row < length(); ++row )
-            setRowHidden(row, false);
+        applyGroupFolding();
         scrollTo(currentIndex(), PositionAtCenter);
         emit filterProgressChanged(100);
     }
@@ -1664,6 +1707,26 @@ bool ClipboardBrowser::addAndSelect(const QVariantMap &data, int row)
 
 void ClipboardBrowser::addUnique(const QVariantMap &data, ClipboardMode mode)
 {
+    if (QDateTime::currentMSecsSinceEpoch() <= m_sharedData->suppressReaddUntilMs) {
+        bool sameAsPastedItem = false;
+        if (m_sharedData->suppressReaddHasText) {
+            sameAsPastedItem = getTextData(data) == m_sharedData->suppressReaddText;
+        } else if (!m_sharedData->suppressReaddImage.isEmpty()) {
+            for (auto it = data.constBegin(); it != data.constEnd(); ++it) {
+                if (it.key().startsWith(QLatin1String("image/"))
+                    && it.value().toByteArray() == m_sharedData->suppressReaddImage) {
+                    sameAsPastedItem = true;
+                    break;
+                }
+            }
+        }
+
+        if (sameAsPastedItem) {
+            COPYQ_LOG("Skipping item re-added after paste");
+            return;
+        }
+    }
+
     if ( moveToTop(hash(data)) ) {
         COPYQ_LOG("New item: Moving existing to top");
         return;
@@ -1731,11 +1794,141 @@ bool ClipboardBrowser::loadItems(const QByteArray &itemData)
     }
 
     d.rowsInserted(QModelIndex(), 0, m.rowCount());
+    applyGroupFolding();
     if ( hasFocus() )
         setCurrent(0);
     onItemCountChanged();
 
     return true;
+}
+
+bool ClipboardBrowser::isGroupRow(int row) const
+{
+    if (row < 0 || row >= length())
+        return false;
+    return index(row).data(contentType::data).toMap().contains(mimeItemGroup);
+}
+
+void ClipboardBrowser::insertGroup(const QString &name, int row)
+{
+    QVariantMap data;
+    const QString title = groupTitle(name, false);
+    data.insert(mimeText, title.toUtf8());
+    data.insert(mimeItemGroup, name.toUtf8());
+    data.insert(mimeItemGroupCollapsed, QByteArrayLiteral("0"));
+    data.insert(mimeColor, QByteArrayLiteral("rgba(70,130,180,90)"));
+    addAndSelect(data, row);
+}
+
+void ClipboardBrowser::toggleGroupCollapsed(int row)
+{
+    if (!isGroupRow(row))
+        return;
+
+    QVariantMap data = index(row).data(contentType::data).toMap();
+    const bool collapsed = data.value(mimeItemGroupCollapsed).toByteArray() == "1";
+    const QString name = getTextData(data.value(mimeItemGroup).toByteArray());
+    data.insert(mimeItemGroupCollapsed, collapsed ? QByteArrayLiteral("0") : QByteArrayLiteral("1"));
+    data.insert(mimeText, groupTitle(name, !collapsed).toUtf8());
+    m.setData(index(row), data, contentType::data);
+    applyGroupFolding();
+}
+
+void ClipboardBrowser::renameGroup(int row, const QString &name)
+{
+    if (!isGroupRow(row))
+        return;
+
+    QVariantMap data = index(row).data(contentType::data).toMap();
+    const bool collapsed = data.value(mimeItemGroupCollapsed).toByteArray() == "1";
+    data.insert(mimeItemGroup, name.toUtf8());
+    data.insert(mimeText, groupTitle(name, collapsed).toUtf8());
+    m.setData(index(row), data, contentType::data);
+}
+
+int ClipboardBrowser::groupHeaderForRow(int row) const
+{
+    if (row < 0 || row >= length() || isGroupRow(row))
+        return -1;
+
+    for (int i = row - 1; i >= 0; --i) {
+        if (isGroupRow(i))
+            return i;
+    }
+    return -1;
+}
+
+QString ClipboardBrowser::groupName(int headerRow) const
+{
+    if (!isGroupRow(headerRow))
+        return QString();
+
+    const QVariantMap data = index(headerRow).data(contentType::data).toMap();
+    return getTextData(data.value(mimeItemGroup).toByteArray());
+}
+
+void ClipboardBrowser::moveSelectedToGroup(int headerRow)
+{
+    if (!isGroupRow(headerRow))
+        return;
+
+    QModelIndexList indexes;
+    for (const QModelIndex &item : selectedIndexes()) {
+        if (!item.isValid() || isGroupRow(item.row()) || groupHeaderForRow(item.row()) == headerRow)
+            continue;
+        indexes.append(item);
+    }
+    if (indexes.isEmpty())
+        return;
+
+    int targetRow = length();
+    for (int row = headerRow + 1; row < length(); ++row) {
+        if (isGroupRow(row)) {
+            targetRow = row;
+            break;
+        }
+    }
+
+    move(indexes, targetRow);
+
+    QVariantMap data = index(headerRow).data(contentType::data).toMap();
+    if (data.value(mimeItemGroupCollapsed).toByteArray() == "1") {
+        const QString name = getTextData(data.value(mimeItemGroup).toByteArray());
+        data.insert(mimeItemGroupCollapsed, QByteArrayLiteral("0"));
+        data.insert(mimeText, groupTitle(name, false).toUtf8());
+        m.setData(index(headerRow), data, contentType::data);
+        applyGroupFolding();
+    }
+}
+
+void ClipboardBrowser::removeSelectedFromGroup()
+{
+    QModelIndexList indexes;
+    for (const QModelIndex &item : selectedIndexes()) {
+        if (!item.isValid() || isGroupRow(item.row()) || groupHeaderForRow(item.row()) < 0)
+            continue;
+        indexes.append(item);
+    }
+    if (indexes.isEmpty())
+        return;
+
+    move(indexes, 0);
+}
+
+int ClipboardBrowser::visiblePasteRow(int nth) const
+{
+    if (nth < 0)
+        return -1;
+
+    int seen = 0;
+    for (int row = 0; row < length(); ++row) {
+        if (isRowHidden(row) || isGroupRow(row))
+            continue;
+        if (seen == nth)
+            return row;
+        ++seen;
+    }
+    return -1;
 }
 
 bool ClipboardBrowser::saveItems()

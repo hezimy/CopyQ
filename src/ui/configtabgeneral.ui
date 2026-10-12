@@ -118,6 +118,52 @@
        </widget>
       </item>
       <item>
+       <layout class="QHBoxLayout" name="horizontalLayoutCloseOnUnfocusDelay">
+        <item>
+         <widget class="QLabel" name="labelCloseOnUnfocusDelay">
+          <property name="text">
+           <string>Close &amp;delay when unfocused:</string>
+          </property>
+          <property name="buddy">
+           <cstring>spinBoxCloseOnUnfocusDelay</cstring>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="spinBoxCloseOnUnfocusDelay">
+          <property name="toolTip">
+           <string>How long to wait after the main window loses focus before closing it</string>
+          </property>
+          <property name="suffix">
+           <string notr="true"> ms</string>
+          </property>
+          <property name="maximum">
+           <number>60000</number>
+          </property>
+          <property name="singleStep">
+           <number>100</number>
+          </property>
+          <property name="value">
+           <number>3000</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalSpacerCloseOnUnfocusDelay">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item>
        <widget class="QCheckBox" name="checkBoxOpenWindowsOnCurrentScreen">
         <property name="toolTip">
          <string>Enable to open windows on current screen. Disable to open windows where they were last closed</string>

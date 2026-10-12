@@ -33,12 +33,12 @@
 
 #include <QAbstractEventDispatcher>
 #include <QApplication>
+#include <QList>
 #include <QMessageBox>
 
 namespace {
 
-int referenceCounter = 0;
-
+QList<QxtGlobalShortcutPrivate *> aliveShortcuts;
 QHash<QPair<quint32, quint32>, QxtGlobalShortcut*> shortcuts;
 
 } // namespace
@@ -63,21 +63,28 @@ QxtGlobalShortcutPrivate::~QxtGlobalShortcutPrivate()
 
 void QxtGlobalShortcutPrivate::initFallback()
 {
-    if (referenceCounter == 0) {
-        QAbstractEventDispatcher::instance()->installNativeEventFilter(this);
+    // Keep the native event filter on a living shortcut. Recreating one set of
+    // hotkeys (for example after settings reload) must not leave the filter
+    // attached to an already destroyed object, or every global shortcut stops.
+    if (aliveShortcuts.isEmpty()) {
+        if (auto *dispatcher = QAbstractEventDispatcher::instance())
+            dispatcher->installNativeEventFilter(this);
     }
-    ++referenceCounter;
+    aliveShortcuts.append(this);
 }
 
 void QxtGlobalShortcutPrivate::destroyFallback()
 {
-    --referenceCounter;
-    if (referenceCounter == 0) {
-        QAbstractEventDispatcher *ed = QAbstractEventDispatcher::instance();
-        if (ed != nullptr) {
-            ed->removeNativeEventFilter(this);
-        }
-    }
+    const bool ownsFilter = !aliveShortcuts.isEmpty() && aliveShortcuts.constFirst() == this;
+    aliveShortcuts.removeOne(this);
+
+    auto *dispatcher = QAbstractEventDispatcher::instance();
+    if (!dispatcher || !ownsFilter)
+        return;
+
+    dispatcher->removeNativeEventFilter(this);
+    if (!aliveShortcuts.isEmpty())
+        dispatcher->installNativeEventFilter(aliveShortcuts.constFirst());
 }
 
 void QxtGlobalShortcutPrivate::setKeySequence(const QKeySequence& shortcut)

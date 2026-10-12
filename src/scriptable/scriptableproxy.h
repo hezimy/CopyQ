@@ -114,6 +114,7 @@ public slots:
     bool showWindow();
     bool showWindowAt(QRect rect);
     bool pasteToCurrentWindow();
+    bool pasteClipboardItem(int indexFromZero);
     bool copyFromCurrentWindow();
 
     bool focusPrevious();

@@ -189,6 +189,7 @@ public slots:
     QJSValue copy();
     QJSValue copySelection();
     QJSValue paste();
+    QJSValue pasteClipboardItem();
 
     QJSValue tab();
     QJSValue removeTab();

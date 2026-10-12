@@ -31,6 +31,7 @@ class ItemOrderList;
 class Option;
 class ShortcutsWidget;
 class QAbstractButton;
+class QLabel;
 class QCheckBox;
 class QComboBox;
 class QLineEdit;
@@ -122,6 +123,14 @@ private:
 
     void updateTabComboBoxes();
 
+    void initApplyFeedback();
+    void watchPreferenceWidget(QWidget *widget);
+    void markPreferencesDirty();
+    void updateApplyButton(bool dirty, bool justApplied);
+    void updateCloseOnUnfocusDelayEnabled();
+
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
     Ui::ConfigurationManager *ui;
 
     ClipboardBrowserSharedPtr m_sharedData;
@@ -137,4 +146,7 @@ private:
     std::shared_ptr<Ui::ConfigTabTray> m_tabTray;
 
     QHash<QString, Option> m_options;
+    QLabel *m_applyStatusLabel = nullptr;
+    QString m_applyButtonText;
+    bool m_blockPreferenceDirty = false;
 };

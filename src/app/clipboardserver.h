@@ -10,6 +10,7 @@
 #include "common/clientsocket.h"
 #include "gui/clipboardbrowsershared.h"
 
+#include <QList>
 #include <QSet>
 #include <QMap>
 #include <QPointer>
@@ -85,6 +86,8 @@ private:
 
     void removeGlobalShortcuts();
 
+    void updatePasteItemShortcuts();
+
     /** Called when new commands are available. */
     void onCommandsSaved(const QVector<Command> &commands);
 
@@ -135,6 +138,9 @@ private:
     bool m_exitting = false;
     bool m_ignoreNewConnections = false;
     QMap<QxtGlobalShortcut*, Command> m_shortcutActions;
+#ifdef COPYQ_GLOBAL_SHORTCUTS
+    QList<QxtGlobalShortcut*> m_pasteItemShortcuts;
+#endif
     QTimer m_ignoreKeysTimer;
     QTimer m_updateThemeTimer;
     uint m_monitorCommandsStateHash = 0;

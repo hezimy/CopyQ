@@ -884,6 +884,12 @@ bool ScriptableProxy::showWindowAt(QRect rect)
     return showWindow();
 }
 
+bool ScriptableProxy::pasteClipboardItem(int indexFromZero)
+{
+    INVOKE(pasteClipboardItem, (indexFromZero));
+    return m_wnd->pasteClipboardItem(indexFromZero);
+}
+
 bool ScriptableProxy::pasteToCurrentWindow()
 {
     INVOKE(pasteToCurrentWindow, ());

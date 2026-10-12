@@ -65,11 +65,13 @@
 
 #include <QAction>
 #include <QCloseEvent>
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QFile>
 #include <QFileDialog>
 #include <QFlags>
 #include <QInputDialog>
+#include <QLineEdit>
 #include <QLoggingCategory>
 #include <QMenu>
 #include <QMenuBar>
@@ -876,7 +878,7 @@ MainWindow::MainWindow(const ClipboardBrowserSharedPtr &sharedData, QWidget *par
 
 bool MainWindow::browseMode() const
 {
-    return ui->searchBar->isHidden();
+    return ui->searchBar->text().isEmpty();
 }
 
 QStringList MainWindow::copyqStats() const
@@ -1047,6 +1049,16 @@ void MainWindow::createMenu()
     // - paste items
     createAction( Actions::Edit_PasteItems, &MainWindow::pasteItems, menu, actionParent );
 
+    QMenu *pasteItemMenu = menu->addMenu( tr("Paste Clipboard &Item") );
+    for (int i = 0; i < 9; ++i) {
+        const auto id = static_cast<Actions::Id>(static_cast<int>(Actions::Edit_PasteItem1) + i);
+        QAction *pasteItemAction = actionForMenuItem(id, this, Qt::ApplicationShortcut);
+        connect(pasteItemAction, &QAction::triggered, this, [this, i]() {
+            pasteClipboardItem(i);
+        });
+        pasteItemMenu->addAction(pasteItemAction);
+    }
+
     // - copy items
     createAction( Actions::Edit_CopySelectedItems, &MainWindow::copyItems, menu, actionParent );
 
@@ -1208,6 +1220,58 @@ void MainWindow::updateContextMenuTimeout()
     addItemAction( Actions::Item_MoveDown, this, &MainWindow::moveDown );
     addItemAction( Actions::Item_MoveToTop, this, &MainWindow::moveToTop );
     addItemAction( Actions::Item_MoveToBottom, this, &MainWindow::moveToBottom );
+
+    m_menuItem->addSeparator();
+
+    addItemAction( Actions::Item_NewGroup, this, &MainWindow::addItemGroup );
+    QAction *toggleGroupAction = addItemAction( Actions::Item_ToggleGroup, this, &MainWindow::toggleItemGroup );
+    QAction *renameGroupAction = addItemAction( Actions::Item_RenameGroup, this, &MainWindow::renameItemGroup );
+    const QModelIndex current = c->currentIndex();
+    const bool currentIsGroup = current.isValid() && c->isGroupRow(current.row());
+    toggleGroupAction->setEnabled(currentIsGroup);
+    renameGroupAction->setEnabled(currentIsGroup);
+
+    QList<int> groupHeaders;
+    bool anyInGroup = false;
+    bool anyMovable = false;
+    const QModelIndexList selected = c->selectionModel()->selectedIndexes();
+    for (const QModelIndex &index : selected) {
+        if (!index.isValid() || c->isGroupRow(index.row()))
+            continue;
+        anyMovable = true;
+        if (c->groupHeaderForRow(index.row()) >= 0)
+            anyInGroup = true;
+    }
+    for (int row = 0; row < c->length(); ++row) {
+        if (c->isGroupRow(row))
+            groupHeaders.append(row);
+    }
+
+    m_menuItem->addSeparator();
+
+    QAction *removeFromGroupAction = m_menuItem->addAction(tr("&Remove from Group"));
+    removeFromGroupAction->setEnabled(anyInGroup);
+    connect(removeFromGroupAction, &QAction::triggered, c, &ClipboardBrowser::removeSelectedFromGroup);
+
+    QMenu *moveToGroupMenu = m_menuItem->addMenu(tr("Move into &Group"));
+    connect(moveToGroupMenu, &QMenu::aboutToShow, this, &MainWindow::disableHideWindowOnUnfocus);
+    connect(moveToGroupMenu, &QMenu::aboutToHide, this, &MainWindow::enableHideWindowOnUnfocus);
+    moveToGroupMenu->setEnabled(anyMovable && !groupHeaders.isEmpty());
+    for (int headerRow : groupHeaders) {
+        const QString name = c->groupName(headerRow);
+        QAction *moveAction = moveToGroupMenu->addAction(name);
+        connect(moveAction, &QAction::triggered, this, [this, name]() {
+            auto browser = this->browser();
+            if (!browser)
+                return;
+            for (int row = 0; row < browser->length(); ++row) {
+                if (browser->isGroupRow(row) && browser->groupName(row) == name) {
+                    browser->moveSelectedToGroup(row);
+                    return;
+                }
+            }
+        });
+    }
 
     updateToolBar();
     updateActionShortcuts();
@@ -1456,6 +1520,113 @@ void MainWindow::moveToBottom()
     auto c = browser();
     if (c)
         c->move(Qt::Key_End);
+}
+
+void MainWindow::addItemGroup()
+{
+    auto c = browser();
+    if (!c)
+        return;
+
+    disableHideWindowOnUnfocus();
+    bool ok = false;
+    const QString name = QInputDialog::getText(
+                this, tr("New Group"), tr("Group name:"), QLineEdit::Normal, QString(), &ok);
+    enableHideWindowOnUnfocus();
+    if (!ok)
+        return;
+
+    const QString trimmed = name.trimmed();
+    if (trimmed.isEmpty())
+        return;
+
+    const int row = c->currentIndex().isValid() ? c->currentIndex().row() : 0;
+    c->insertGroup(trimmed, row);
+}
+
+void MainWindow::toggleItemGroup()
+{
+    auto c = browser();
+    if (!c || !c->currentIndex().isValid())
+        return;
+    c->toggleGroupCollapsed(c->currentIndex().row());
+}
+
+void MainWindow::renameItemGroup()
+{
+    auto c = browser();
+    if (!c || !c->currentIndex().isValid() || !c->isGroupRow(c->currentIndex().row()))
+        return;
+
+    const QVariantMap data = c->currentIndex().data(contentType::data).toMap();
+    const QString currentName = getTextData(data.value(mimeItemGroup).toByteArray());
+    disableHideWindowOnUnfocus();
+    bool ok = false;
+    const QString name = QInputDialog::getText(
+                this, tr("Rename Group"), tr("Group name:"), QLineEdit::Normal, currentName, &ok);
+    enableHideWindowOnUnfocus();
+    if (!ok)
+        return;
+
+    const QString trimmed = name.trimmed();
+    if (trimmed.isEmpty())
+        return;
+
+    c->renameGroup(c->currentIndex().row(), trimmed);
+}
+
+void MainWindow::suppressReaddingClipboardData(const QVariantMap &data)
+{
+    m_sharedData->suppressReaddHasText = data.contains(mimeText);
+    m_sharedData->suppressReaddText = getTextData(data);
+    m_sharedData->suppressReaddImage.clear();
+    if (!m_sharedData->suppressReaddHasText) {
+        for (auto it = data.constBegin(); it != data.constEnd(); ++it) {
+            if (it.key().startsWith(QLatin1String("image/"))) {
+                m_sharedData->suppressReaddImage = it.value().toByteArray();
+                break;
+            }
+        }
+    }
+    m_sharedData->suppressReaddUntilMs = QDateTime::currentMSecsSinceEpoch() + 2000;
+}
+
+bool MainWindow::pasteClipboardItem(int indexFromZero)
+{
+    QString tabName = m_options.clipboardTab;
+    if (tabName.isEmpty())
+        tabName = defaultClipboardTabName();
+
+    ClipboardBrowserPlaceholder *placeholder = getPlaceholder(tabName);
+    if (!placeholder && ui->tabWidget->count() > 0)
+        placeholder = getPlaceholder(0);
+    auto c = placeholder ? placeholder->createBrowser() : nullptr;
+    if (!c)
+        return false;
+
+    const int row = c->visiblePasteRow(indexFromZero);
+    if (row < 0)
+        return false;
+
+    QVariantMap data = c->copyIndex(c->index(row));
+    data.remove(mimeItemGroup);
+    data.remove(mimeItemGroupCollapsed);
+    suppressReaddingClipboardData(data);
+    setClipboardAndSelection(data);
+
+    PlatformWindowPtr target = platformNativeInterface()->getCurrentWindow();
+    if (!target || target->matchesWidget(this) || target->matchesWidget(m_trayMenu))
+        target = m_windowForMainPaste;
+    if (!target)
+        return false;
+
+    if (target->matchesWidget(this))
+        return false;
+
+    COPYQ_LOG(QStringLiteral("Pasting clipboard item %1 to: %2")
+              .arg(indexFromZero + 1)
+              .arg(target->getTitle()));
+    return target->pasteFromClipboard();
 }
 
 void MainWindow::onBrowserCreated(ClipboardBrowser *browser)
@@ -2975,8 +3146,9 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
          return;
     }
 
-    // Ctrl/Alt+0 to Ctrl/Alt+9 to focus tabs (0 to focus the last, 1 to focus the first and so on).
-    if (modifiers == Qt::ControlModifier || modifiers == Qt::AltModifier) {
+    // Alt+0..9 and Ctrl+0 focus tabs. Ctrl+1..9 paste clipboard items.
+    if (modifiers == Qt::AltModifier
+        || (modifiers == Qt::ControlModifier && key == Qt::Key_0)) {
         if (key >= Qt::Key_0 && key <= Qt::Key_9) {
             const int index = (key == Qt::Key_0) ? ui->tabWidget->count() - 1
                                                  : key - Qt::Key_1;
@@ -3837,6 +4009,15 @@ void MainWindow::activateCurrentItem()
 
 void MainWindow::activateCurrentItemHelper()
 {
+    auto c = browser();
+    if (c) {
+        const QModelIndex current = c->currentIndex();
+        if (current.isValid() && c->isGroupRow(current.row())) {
+            c->toggleGroupCollapsed(current.row());
+            return;
+        }
+    }
+
     if ( QApplication::queryKeyboardModifiers() == Qt::NoModifier
          && isItemMenuDefaultActionValid() )
     {
@@ -3844,9 +4025,12 @@ void MainWindow::activateCurrentItemHelper()
         return;
     }
 
-    auto c = browser();
     if (!c)
         return;
+
+    const QModelIndexList selected = c->selectionModel()->selectedIndexes();
+    if (!selected.isEmpty())
+        suppressReaddingClipboardData(c->copyIndexes(selected));
 
     // Perform custom actions on item activation.
     PlatformWindowPtr lastWindow = m_windowForMainPaste;
@@ -3880,12 +4064,29 @@ void MainWindow::activateCurrentItemHelper()
 
 void MainWindow::onItemClicked()
 {
+    auto c = browser();
+    if (c) {
+        const QModelIndex current = c->currentIndex();
+        if (current.isValid() && c->isGroupRow(current.row())
+            && QGuiApplication::keyboardModifiers() == Qt::NoModifier) {
+            c->toggleGroupCollapsed(current.row());
+            return;
+        }
+    }
+
     if (m_singleClickActivate && QGuiApplication::keyboardModifiers() == Qt::NoModifier)
         activateCurrentItem();
 }
 
 void MainWindow::onItemDoubleClicked()
 {
+    auto c = browser();
+    if (c) {
+        const QModelIndex current = c->currentIndex();
+        if (current.isValid() && c->isGroupRow(current.row()))
+            return;
+    }
+
     if (!m_singleClickActivate)
         activateCurrentItem();
 }
@@ -4063,9 +4264,7 @@ ClipboardBrowserPlaceholder *MainWindow::getPlaceholderForTrayMenu()
 void MainWindow::onFilterChanged()
 {
     ItemFilterPtr filter = ui->searchBar->filter();
-    if ( filter->matchesAll() )
-        enterBrowseMode();
-    else if ( browseMode() )
+    if ( !filter->matchesAll() && browseMode() )
         enterSearchMode();
 
     auto c = browser();
@@ -4144,7 +4343,11 @@ void MainWindow::enterBrowseMode()
     auto placeholder = getPlaceholder();
     if (placeholder)
         placeholder->setFocus();
-    ui->searchBar->hide();
+
+    ui->searchBar->blockSignals(true);
+    ui->searchBar->clear();
+    ui->searchBar->blockSignals(false);
+    ui->searchBar->show();
 
     auto c = browserOrNull();
     if (c)

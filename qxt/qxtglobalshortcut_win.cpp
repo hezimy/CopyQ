@@ -201,16 +201,22 @@ quint32 QxtGlobalShortcutPrivate::nativeKeycode(Qt::Key key, Qt::KeyboardModifie
         return VK_VOLUME_UP;
     case Qt::Key_VolumeMute:
         return VK_VOLUME_MUTE;
+    case Qt::Key_QuoteLeft:
+    case Qt::Key_AsciiTilde:
+        // The key left of 1 on a standard keyboard. VkKeyScanEx() often returns
+        // this with shift-state bits set, which makes RegisterHotKey fail for Ctrl+`.
+        return VK_OEM_3;
 
     default:
         // Try to get virtual key from current keyboard layout or US.
+        // The high byte is shift state and must not be passed to RegisterHotKey.
         const HKL layout = GetKeyboardLayout(0);
         int vk = VkKeyScanEx(key, layout);
         if (vk == -1) {
             const HKL layoutUs = GetKeyboardLayout(0x409);
             vk = VkKeyScanEx(key, layoutUs);
         }
-        return vk == -1 ? 0 : vk;
+        return vk == -1 ? 0 : static_cast<quint32>(vk & 0xFF);
     }
 }
 

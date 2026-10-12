@@ -69,6 +69,20 @@ enum Id {
 
     ItemMenu,
 
+    Edit_PasteItem1,
+    Edit_PasteItem2,
+    Edit_PasteItem3,
+    Edit_PasteItem4,
+    Edit_PasteItem5,
+    Edit_PasteItem6,
+    Edit_PasteItem7,
+    Edit_PasteItem8,
+    Edit_PasteItem9,
+
+    Item_NewGroup,
+    Item_ToggleGroup,
+    Item_RenameGroup,
+
     Count
 };
 

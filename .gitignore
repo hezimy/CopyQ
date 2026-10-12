@@ -66,3 +66,7 @@ CMakeLists.txt.user*
 launchpad.key
 compile_commands.json
 uv.lock
+
+# Local Windows build output (fork)
+/dist/
+/aqtinstall.log

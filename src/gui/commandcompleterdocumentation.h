@@ -40,6 +40,7 @@ void addDocumentation(AddDocumentationCallback addDocumentation)
     addDocumentation("copySelection", "copySelection(mimeType, data, [mimeType, data]...)", "Sets primary selection data.");
     addDocumentation("copySelection", "copySelection(Item)", "Sets primary selection from an item.");
     addDocumentation("paste", "paste()", "Sends `Shift+Insert` (or `Ctrl+V`) to the current application or window to trigger a paste operation.");
+    addDocumentation("pasteClipboardItem", "pasteClipboardItem([row=0])", "Pastes the visible clipboard-tab item at zero-based `row` (skipping group headers) into the previously focused window, without inserting that item into the list again.");
     addDocumentation("tab", "tab() -> array of strings", "Returns tab names.");
     addDocumentation("tab", "tab(tabName)", "Sets current tab for the script.");
     addDocumentation("removeTab", "removeTab(tabName)", "Removes tab.");

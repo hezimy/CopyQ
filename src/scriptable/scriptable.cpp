@@ -932,6 +932,19 @@ QJSValue Scriptable::paste()
     return QJSValue();
 }
 
+QJSValue Scriptable::pasteClipboardItem()
+{
+    m_skipArguments = 1;
+    int indexFromZero = 0;
+    if (argumentCount() > 0 && !toInt(argument(0), &indexFromZero))
+        return throwError(argumentError());
+
+    if (!m_proxy->pasteClipboardItem(indexFromZero))
+        return throwError(QStringLiteral("Failed to paste clipboard item"));
+
+    return QJSValue();
+}
+
 QJSValue Scriptable::tab()
 {
     m_skipArguments = 1;

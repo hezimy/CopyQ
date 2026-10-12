@@ -20,6 +20,7 @@
 #include "gui/commanddialog.h"
 #include "gui/iconfactory.h"
 #include "gui/mainwindow.h"
+#include "gui/menuitems.h"
 #include "gui/notificationbutton.h"
 #include "gui/notificationdaemon.h"
 #include "item/itemfactory.h"
@@ -293,6 +294,38 @@ void ClipboardServer::removeGlobalShortcuts()
     for (auto it = m_shortcutActions.constBegin(); it != m_shortcutActions.constEnd(); ++it)
         delete it.key();
     m_shortcutActions.clear();
+}
+
+void ClipboardServer::updatePasteItemShortcuts()
+{
+#ifdef COPYQ_GLOBAL_SHORTCUTS
+    qDeleteAll(m_pasteItemShortcuts);
+    m_pasteItemShortcuts.clear();
+
+    for (int i = 0; i < 9; ++i) {
+        const auto id = static_cast<Actions::Id>(static_cast<int>(Actions::Edit_PasteItem1) + i);
+        const MenuItem &item = m_sharedData->menuItems[id];
+        for (const QKeySequence &shortcut : item.shortcuts) {
+            if (shortcut.isEmpty())
+                continue;
+
+            auto *shortcutObject = new QxtGlobalShortcut(shortcut, item.text, this);
+            if (!shortcutObject->isValid()) {
+                log(QStringLiteral("Failed to set global shortcut \"%1\" for \"%2\".")
+                    .arg(shortcut.toString(), item.text),
+                    LogWarning);
+                delete shortcutObject;
+                continue;
+            }
+
+            connect(shortcutObject, &QxtGlobalShortcut::activated, this, [this, i](QxtGlobalShortcut *) {
+                m_ignoreKeysTimer.start();
+                m_wnd->pasteClipboardItem(i);
+            });
+            m_pasteItemShortcuts.append(shortcutObject);
+        }
+    }
+#endif
 }
 
 void ClipboardServer::onCommandsSaved(const QVector<Command> &commands)
@@ -825,6 +858,7 @@ void ClipboardServer::loadSettings(AppConfig *appConfig)
     m_sharedData->actions->setMaxRowCount(appConfig->option<Config::max_process_manager_rows>());
 
     m_wnd->loadSettings(settings, appConfig);
+    updatePasteItemShortcuts();
 
     m_textTabSize = appConfig->option<Config::text_tab_width>();
     m_saveOnDeactivate = appConfig->option<Config::save_on_app_deactivated>();
