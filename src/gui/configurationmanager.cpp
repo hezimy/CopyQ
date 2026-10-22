@@ -23,6 +23,7 @@
 #include "gui/encryptionpassword.h"
 #include "gui/iconfactory.h"
 #include "gui/icons.h"
+#include "gui/theme.h"
 #include "gui/passwordprompt.h"
 #include "gui/pluginwidget.h"
 #include "gui/shortcutswidget.h"
@@ -129,6 +130,10 @@ ConfigurationManager::ConfigurationManager(const ClipboardBrowserSharedPtr &shar
     , m_sharedData(sharedData)
 {
     ui->setupUi(this);
+
+    if (m_sharedData)
+        m_sharedData->theme.decorateDialog(this);
+
     initTabIcons();
     connectSlots();
     initApplyFeedback();

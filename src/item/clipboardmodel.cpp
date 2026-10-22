@@ -4,6 +4,7 @@
 
 #include "common/contenttype.h"
 #include "common/mimetypes.h"
+#include "item/itemtypeflags.h"
 
 #include <QStringList>
 
@@ -115,7 +116,9 @@ bool ClipboardModel::setData(const QModelIndex &index, const QVariant &value, in
 void ClipboardModel::insertItem(const QVariantMap &data, int row)
 {
     ClipboardItem item;
-    item.setData(data);
+    QVariantMap dataMap = data;
+    dataMap.insert( mimeItemType, itemType::toByteArray(itemType::computeFlags(dataMap)) );
+    item.setData(dataMap);
 
     beginInsertRows(QModelIndex(), row, row);
 
@@ -135,7 +138,9 @@ void ClipboardModel::insertItems(const QVector<QVariantMap> &dataList, int row)
     beginInsertRows(QModelIndex(), row, row + dataList.size() - 1);
 
     for ( auto it = std::begin(dataList); it != std::end(dataList); ++it ) {
-        m_clipboardList.insert(targetRow, ClipboardItem(*it));
+        QVariantMap dataMap = *it;
+        dataMap.insert( mimeItemType, itemType::toByteArray(itemType::computeFlags(dataMap)) );
+        m_clipboardList.insert(targetRow, ClipboardItem(dataMap));
         ++targetRow;
     }
 

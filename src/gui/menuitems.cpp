@@ -78,7 +78,7 @@ MenuItems menuItems()
     addMenuItem(items, Actions::Editor_Save, QObject::tr("Save Item"),
                 QStringLiteral("editor_save"), QObject::tr("F2", "Shortcut to save item editor changes"), QStringLiteral("document-save"), IconFloppyDisk);
     addMenuItem(items, Actions::Editor_Cancel, QObject::tr("Cancel Editing"),
-                QStringLiteral("editor_cancel"), QObject::tr("Escape", "Shortcut to revert item editor changes"), QStringLiteral("document-revert"), IconTrash);
+                QStringLiteral("editor_cancel"), QObject::tr("Escape", "Shortcut to revert item editor changes"), QStringLiteral("document-revert"), IconXmark);
     addMenuItem(items, Actions::Editor_Undo, QObject::tr("Undo"),
                 QStringLiteral("editor_undo"), QKeySequence::Undo, QStringLiteral("edit-undo"), IconRotateLeft);
     addMenuItem(items, Actions::Editor_Redo, QObject::tr("Redo"),

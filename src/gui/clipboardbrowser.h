@@ -227,7 +227,34 @@ class ClipboardBrowser final : public QListView
          * and items hidden by a collapsed group or the current filter.
          * @return -1 when there is no such item.
          */
-        int visiblePasteRow(int nth) const;
+        /**
+         * Returns the row of the nth item in the whole history.
+         *
+         * The item type filter and the group folding are ignored so that the
+         * numbered paste shortcuts always paste the same items, and group
+         * headers are skipped.
+         */
+        int pasteRow(int nth) const;
+
+        /** Item type shown by the filter bar below the list. Types are exclusive. */
+        enum class ItemTypeFilter {
+            All,
+            Marked,
+            Text,
+            Image,
+            TextAndImage,
+            File,
+            Group,
+        };
+
+        /**
+         * Filter rows by item type. Applied on top of the text filter.
+         *
+         * "Marked" shows items with any tag.
+         */
+        void setItemTypeFilter(ItemTypeFilter filter);
+
+        ItemTypeFilter itemTypeFilter() const { return m_itemTypeFilter; }
 
         /** Edit selected unhidden items. */
         void editSelected();
@@ -348,9 +375,69 @@ class ClipboardBrowser final : public QListView
          */
         bool hideFiltered(int row);
 
-        bool isRowInCollapsedGroup(int row) const;
+        /// Properties of an item needed to decide its visibility.
+        ///
+        /// Reading the item data is expensive (large data are stored in
+        /// separate files), so it is read once per row and reused.
+        struct RowTypeInfo {
+            bool isGroup = false;
+            bool collapsed = false;
+            bool hasText = false;
+            bool hasImage = false;
+            bool hasFile = false;
+            bool isMarked = false;
+        };
+
+        RowTypeInfo rowTypeInfo(int row) const;
+
+        /// Cached row properties. Reading the item data is expensive (large
+        /// data are stored in separate files), so the properties are kept
+        /// until the item data change.
+        enum RowFlag : quint8 {
+            RowFlagKnown = 1 << 0,
+            RowFlagGroup = 1 << 1,
+            RowFlagMarked = 1 << 5,
+            RowFlagFile = 1 << 6,
+            RowFlagCollapsed = 1 << 2,
+            RowFlagText = 1 << 3,
+            RowFlagImage = 1 << 4,
+        };
+        mutable QVector<quint8> m_rowFlags;
+
+        void insertRowFlags(int first, int count);
+        void removeRowFlags(int first, int last);
+        void invalidateRowFlags(int first, int last);
+
+        /// Decides the visibility of a row from already fetched properties.
+        /// @param headerRow Row of the group containing the item (-1 if none).
+        bool isRowHiddenByFilter(int row, const RowTypeInfo &info,
+                                 int headerRow, bool headerCollapsed) const;
+
+        /// Applies the type filter and the group folding to all rows.
+        ///
+        /// The work is split into short time slices to keep the window
+        /// responsive even for tabs with thousands of items.
+        void startGroupFoldingPass();
+        void continueGroupFoldingPass(int passId);
 
         void applyGroupFolding();
+
+        /// Stores the content type flags in items that miss them.
+        ///
+        /// Items created before the flags were introduced are updated in the
+        /// background so that later filtering needs no item data at all.
+        void startTypeFlagsBackfill();
+        void continueTypeFlagsBackfill();
+        int m_typeFlagsBackfillRow = -1;
+        /// Suppresses saving while item data are updated internally.
+        int m_suppressSave = 0;
+
+        /// Coalesces the folding into a single pass in the event loop.
+        ///
+        /// Used for model signals so that the view is not modified while the
+        /// model is delivering the change.
+        void scheduleGroupFolding();
+        bool m_groupFoldingScheduled = false;
 
         QString groupTitle(const QString &name, bool collapsed) const;
 
@@ -432,6 +519,14 @@ class ClipboardBrowser final : public QListView
         int m_externalEditorsOpen = 0;
 
         ClipboardBrowserSharedPtr m_sharedData;
+
+        ItemTypeFilter m_itemTypeFilter = ItemTypeFilter::All;
+
+        /// State of the running (time sliced) group folding pass.
+        int m_groupFoldingPassId = 0;
+        int m_groupFoldingRow = 0;
+        int m_groupFoldingHeaderRow = -1;
+        bool m_groupFoldingHeaderCollapsed = false;
 
         int m_dragTargetRow;
         QPoint m_dragStartPosition;

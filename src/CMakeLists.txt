@@ -244,3 +244,5 @@ OPTION(WITH_TESTS "Run test cases from command line" OFF)
 if(WITH_TESTS)
     include(tests/tests.cmake)
 endif()
+
+# Re-run cmake so that new source files in src/ are picked up (GLOB).

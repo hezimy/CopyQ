@@ -29,3 +29,5 @@ extern const QLatin1String mimeDisplayItemInMenu;
 extern const QLatin1String mimeSecret;
 extern const QLatin1String mimeItemGroup;
 extern const QLatin1String mimeItemGroupCollapsed;
+extern const QLatin1String mimeItemType;
+extern const QLatin1String mimeTags;

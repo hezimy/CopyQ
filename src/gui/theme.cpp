@@ -25,6 +25,10 @@
 
 namespace {
 
+/// Theme file (in the "themes" directory) used as the default appearance.
+#define DEFAULT_THEME_FILE "护眼绿.ini"
+
+
 /// Up to this value of background lightness, window title style would be light.
 const int lightThreshold = 100;
 
@@ -331,6 +335,28 @@ void Theme::decorateMainWindow(QWidget *mainWindow) const
     mainWindow->setStyleSheet(getStyleSheet(cssTemplate));
 }
 
+void Theme::decorateDialog(QWidget *dialog) const
+{
+    QPalette palette = QApplication::palette();
+
+    if ( isMainWindowThemeEnabled() ) {
+        palette.setColor( QPalette::Window, color("bg") );
+        palette.setColor( QPalette::WindowText, color("fg") );
+        palette.setColor( QPalette::Base, color("edit_bg") );
+        palette.setColor( QPalette::Text, color("edit_fg") );
+        palette.setColor( QPalette::AlternateBase, color("alt_bg") );
+        palette.setColor( QPalette::Button, color("bg") );
+        palette.setColor( QPalette::ButtonText, color("fg") );
+        palette.setColor( QPalette::Highlight, color("sel_bg") );
+        palette.setColor( QPalette::HighlightedText, color("sel_fg") );
+        palette.setColor( QPalette::ToolTipBase, color("notes_bg") );
+        palette.setColor( QPalette::ToolTipText, color("notes_fg") );
+    }
+
+    dialog->setPalette(palette);
+    dialog->setStyleSheet( getMenuStyleSheet() );
+}
+
 void Theme::decorateScrollArea(QAbstractScrollArea *scrollArea) const
 {
     const auto scrollbarPolicy = this->scrollbarPolicy();
@@ -525,6 +551,24 @@ void Theme::resetTheme()
 
     m_theme["num_margin"] = Option(2);
     m_theme["num_sel_fg"] = Option(QString());
+
+    applyDefaultThemeFile();
+}
+
+/// Uses the bundled theme as the default appearance (for a configuration
+/// without any theme values).
+void Theme::applyDefaultThemeFile()
+{
+    const QString fileName = findThemeFile(QStringLiteral(DEFAULT_THEME_FILE));
+    if ( fileName.isEmpty() )
+        return;
+
+    QSettings settings(fileName, QSettings::IniFormat);
+    for ( auto key = m_theme.keyBegin(); key != m_theme.keyEnd(); ++key ) {
+        const auto value = settings.value(*key);
+        if ( value.isValid() )
+            m_theme[*key].setValue(value);
+    }
 }
 
 void Theme::updateTheme()

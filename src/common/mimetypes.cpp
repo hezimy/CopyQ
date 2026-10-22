@@ -26,3 +26,9 @@ const QLatin1String mimeDisplayItemInMenu(COPYQ_MIME_PREFIX "display-item-in-men
 const QLatin1String mimeSecret(COPYQ_MIME_PREFIX "secret");
 const QLatin1String mimeItemGroup(COPYQ_MIME_PREFIX "group");
 const QLatin1String mimeItemGroupCollapsed(COPYQ_MIME_PREFIX "group-collapsed");
+// Cached item content type flags (see item/itemtypeflags.h). The MIME type
+// starts with the plugin prefix so it is ignored by hash() and it is dropped
+// when the whole item data are replaced.
+const QLatin1String mimeItemType(COPYQ_MIME_PREFIX "item-type");
+// Comma-separated list of item tags (set by the "itemtags" plugin).
+const QLatin1String mimeTags(COPYQ_MIME_PREFIX "tags");

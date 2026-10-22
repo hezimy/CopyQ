@@ -16,6 +16,7 @@
 #include "item/itemeditorwidget.h"
 #include "item/itemfactory.h"
 #include "item/itemstore.h"
+#include "item/itemtypeflags.h"
 #include "item/itemwidget.h"
 #include "item/persistentdisplayitem.h"
 #include "item/serialize.h"
@@ -24,6 +25,8 @@
 #include <QDateTime>
 #include <QDrag>
 #include <QElapsedTimer>
+#include <QFile>
+#include <QFileInfo>
 #include <QKeyEvent>
 #include <QMimeData>
 #include <QMenu>
@@ -298,41 +301,341 @@ bool ClipboardBrowser::isFiltered(int row) const
             && !m_sharedData->itemFactory->matches(ind, *filter);
 }
 
+void ClipboardBrowser::insertRowFlags(int first, int count)
+{
+    if (count <= 0)
+        return;
+    if (m_rowFlags.size() < first)
+        m_rowFlags.resize(length(), 0);
+    m_rowFlags.insert(first, count, 0);
+    if (m_rowFlags.size() > length())
+        m_rowFlags.resize(length());
+}
+
+void ClipboardBrowser::removeRowFlags(int first, int last)
+{
+    if (first < 0 || last < first || first >= m_rowFlags.size())
+        return;
+    last = qMin(last, m_rowFlags.size() - 1);
+    m_rowFlags.remove(first, last - first + 1);
+}
+
+void ClipboardBrowser::invalidateRowFlags(int first, int last)
+{
+    if (first < 0)
+        first = 0;
+    if (last < 0 || last >= m_rowFlags.size())
+        last = m_rowFlags.size() - 1;
+    for (int row = first; row <= last; ++row)
+        m_rowFlags[row] = 0;
+}
+
+namespace {
+
+/// True if the item has any tag (the tags are a comma-separated list).
+///
+/// The marker is just a key in the item data, so checking it does not read the
+/// item data files.
+bool isMarkedItem(const QVariantMap &data)
+{
+    if ( !data.contains(mimeTags) )
+        return false;
+
+    const QString tags = QString::fromUtf8(data.value(mimeTags).toByteArray());
+    for ( const auto &tag : tags.split(QLatin1Char(','), Qt::SkipEmptyParts) ) {
+        if ( !tag.trimmed().isEmpty() )
+            return true;
+    }
+
+    return false;
+}
+
+} // namespace
+
+ClipboardBrowser::RowTypeInfo ClipboardBrowser::rowTypeInfo(int row) const
+{
+    RowTypeInfo info;
+
+    if (row >= 0 && row < m_rowFlags.size()) {
+        const quint8 flags = m_rowFlags.at(row);
+        if (flags & RowFlagKnown) {
+            info.isGroup = flags & RowFlagGroup;
+            info.collapsed = flags & RowFlagCollapsed;
+            info.hasText = flags & RowFlagText;
+            info.hasImage = flags & RowFlagImage;
+            info.hasFile = flags & RowFlagFile;
+            info.isMarked = flags & RowFlagMarked;
+            return info;
+        }
+    }
+
+    const QVariantMap data = index(row).data(contentType::data).toMap();
+
+    if (data.contains(mimeItemGroup)) {
+        info.isGroup = true;
+        info.collapsed =
+                data.value(mimeItemGroupCollapsed).toByteArray() == "1";
+    } else {
+        // Content type flags are cached in the item data, so item data files
+        // are read only for items saved before the flags were introduced.
+        const quint8 typeFlags = itemType::storedFlags(data);
+        const quint8 flags = typeFlags != 0 ? typeFlags : itemType::computeFlags(data);
+        info.hasText = flags & itemType::HasText;
+        info.hasImage = flags & itemType::HasImage;
+        info.hasFile = flags & itemType::HasFile;
+        info.isMarked = isMarkedItem(data);
+    }
+
+    if (row >= 0 && row < m_rowFlags.size()) {
+        quint8 flags = RowFlagKnown;
+        if (info.isGroup) flags |= RowFlagGroup;
+        if (info.isMarked) flags |= RowFlagMarked;
+        if (info.collapsed) flags |= RowFlagCollapsed;
+        if (info.hasText) flags |= RowFlagText;
+        if (info.hasImage) flags |= RowFlagImage;
+        if (info.hasFile) flags |= RowFlagFile;
+        m_rowFlags[row] = flags;
+    }
+
+    return info;
+}
+
+bool ClipboardBrowser::isRowHiddenByFilter(
+        int row, const RowTypeInfo &info,
+        int headerRow, bool headerCollapsed) const
+{
+    const auto filter = d.itemFilter();
+    const bool filtering = filter && !filter->matchesAll();
+    const bool typeFiltering = m_itemTypeFilter != ItemTypeFilter::All;
+
+    // The "Groups" filter shows the group headers and - once a group is
+    // expanded - the items inside the group.
+    if (m_itemTypeFilter == ItemTypeFilter::Group) {
+        if (isFiltered(row))
+            return true;
+        if (info.isGroup)
+            return false;
+        return headerRow < 0
+                || headerCollapsed
+                || isFiltered(headerRow);
+    }
+
+    // Group headers belong to the "Groups" filter only. They are plain text
+    // items with extra meta-data, so they must never show up in the content
+    // type filters (text, image, text + image).
+    if (info.isGroup)
+        return true;
+
+    switch (m_itemTypeFilter) {
+    case ItemTypeFilter::Marked:
+        if (!info.isMarked)
+            return true;
+        break;
+    case ItemTypeFilter::Text:
+        if ( !info.hasText || info.hasImage )
+            return true;
+        break;
+    case ItemTypeFilter::Image:
+        if ( !info.hasImage || info.hasText )
+            return true;
+        break;
+    case ItemTypeFilter::TextAndImage:
+        if ( !info.hasText || !info.hasImage )
+            return true;
+        break;
+    case ItemTypeFilter::File:
+        if (!info.hasFile)
+            return true;
+        break;
+    case ItemTypeFilter::All:
+    case ItemTypeFilter::Group:
+        break;
+    }
+
+    if (!filtering && !typeFiltering && headerCollapsed)
+        return true;
+
+    return isFiltered(row);
+}
+
 bool ClipboardBrowser::hideFiltered(int row)
 {
-    if (isGroupRow(row)) {
-        const bool hide = isFiltered(row);
-        setRowHidden(row, hide);
-        return hide;
-    }
+    const RowTypeInfo info = rowTypeInfo(row);
 
     const auto filter = d.itemFilter();
     const bool filtering = filter && !filter->matchesAll();
-    if (!filtering && isRowInCollapsedGroup(row)) {
-        setRowHidden(row, true);
-        return true;
+    const bool typeFiltering = m_itemTypeFilter != ItemTypeFilter::All;
+
+    int headerRow = -1;
+    bool headerCollapsed = false;
+
+    if (info.isGroup) {
+        headerRow = row;
+        headerCollapsed = info.collapsed;
+    } else if (m_itemTypeFilter == ItemTypeFilter::Group
+               || (!filtering && !typeFiltering)) {
+        // Only these two cases depend on the enclosing group. Searching for
+        // the header is expensive, so it is skipped whenever possible.
+        for (int i = row - 1; i >= 0; --i) {
+            const RowTypeInfo other = rowTypeInfo(i);
+            if (other.isGroup) {
+                headerRow = i;
+                headerCollapsed = other.collapsed;
+                break;
+            }
+        }
     }
 
-    const bool hide = isFiltered(row);
+    const bool hide =
+            isRowHiddenByFilter(row, info, headerRow, headerCollapsed);
     setRowHidden(row, hide);
     return hide;
 }
 
-bool ClipboardBrowser::isRowInCollapsedGroup(int row) const
+void ClipboardBrowser::setItemTypeFilter(ItemTypeFilter filter)
 {
-    for (int i = row - 1; i >= 0; --i) {
-        if (!isGroupRow(i))
-            continue;
-        const QVariantMap data = index(i).data(contentType::data).toMap();
-        return data.value(mimeItemGroupCollapsed).toByteArray() == "1";
+    if (m_itemTypeFilter == filter)
+        return;
+    m_itemTypeFilter = filter;
+    startGroupFoldingPass();
+}
+
+void ClipboardBrowser::startGroupFoldingPass()
+{
+    const int passId = ++m_groupFoldingPassId;
+    m_groupFoldingRow = 0;
+    m_groupFoldingHeaderRow = -1;
+    m_groupFoldingHeaderCollapsed = false;
+
+    if (m_rowFlags.size() != length())
+        m_rowFlags.resize(length(), 0);
+
+    continueGroupFoldingPass(passId);
+}
+
+void ClipboardBrowser::continueGroupFoldingPass(int passId)
+{
+    if (passId != m_groupFoldingPassId)
+        return;
+
+    QElapsedTimer timer;
+    timer.start();
+
+    while (m_groupFoldingRow < length()) {
+        const int row = m_groupFoldingRow++;
+        const RowTypeInfo info = rowTypeInfo(row);
+
+        if (info.isGroup) {
+            m_groupFoldingHeaderRow = row;
+            m_groupFoldingHeaderCollapsed = info.collapsed;
+        }
+
+        setRowHidden(row, isRowHiddenByFilter(
+                         row, info, m_groupFoldingHeaderRow,
+                         m_groupFoldingHeaderCollapsed));
+
+        if (timer.elapsed() > 15) {
+            QTimer::singleShot(0, this, [this, passId]() {
+                continueGroupFoldingPass(passId);
+            });
+            return;
+        }
     }
-    return false;
+
+    d.updateAllRows();
+
+    if (currentIndex().isValid())
+        scrollTo(currentIndex(), PositionAtCenter);
+}
+
+void ClipboardBrowser::scheduleGroupFolding()
+{
+    if (m_groupFoldingScheduled)
+        return;
+    m_groupFoldingScheduled = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_groupFoldingScheduled = false;
+        applyGroupFolding();
+    });
 }
 
 void ClipboardBrowser::applyGroupFolding()
 {
-    for (int row = 0; row < length(); ++row)
-        hideFiltered(row);
+    // This pass is up to date, cancel any running sliced pass.
+    ++m_groupFoldingPassId;
+
+    if (m_rowFlags.size() != length())
+        m_rowFlags.resize(length(), 0);
+
+    QElapsedTimer timer;
+    timer.start();
+
+    int headerRow = -1;
+    bool headerCollapsed = false;
+
+    for (int row = 0; row < length(); ++row) {
+        const RowTypeInfo info = rowTypeInfo(row);
+        if (info.isGroup) {
+            headerRow = row;
+            headerCollapsed = info.collapsed;
+        }
+        setRowHidden(row, isRowHiddenByFilter(
+                         row, info, headerRow, headerCollapsed));
+    }
+
+    if (timer.elapsed() > 1000) {
+        qWarning("Applying the item type filter took %lld ms for %d items",
+                 static_cast<long long>(timer.elapsed()), length());
+    }
+}
+
+void ClipboardBrowser::startTypeFlagsBackfill()
+{
+    if (m_typeFlagsBackfillRow >= 0 || !isLoaded())
+        return;
+
+    m_typeFlagsBackfillRow = 0;
+    continueTypeFlagsBackfill();
+}
+
+void ClipboardBrowser::continueTypeFlagsBackfill()
+{
+    if (m_typeFlagsBackfillRow < 0 || !isLoaded())
+        return;
+
+    QElapsedTimer timer;
+    timer.start();
+
+    // Defer repainting while the item data are being updated.
+    setUpdatesEnabled(false);
+
+    while (m_typeFlagsBackfillRow < length()) {
+        const int row = m_typeFlagsBackfillRow;
+        const QModelIndex ind = index(row);
+        const QVariantMap data = ind.data(contentType::data).toMap();
+
+        if ( itemType::storedFlags(data) == 0 ) {
+            const quint8 flags = itemType::computeFlags(data);
+            if (flags != 0) {
+                QVariantMap update;
+                update.insert( mimeItemType, itemType::toByteArray(flags) );
+                ++m_suppressSave;
+                m.setData(ind, update, contentType::updateData);
+                --m_suppressSave;
+            }
+        }
+
+        ++m_typeFlagsBackfillRow;
+
+        if (timer.elapsed() > 15) {
+            setUpdatesEnabled(true);
+            QTimer::singleShot(0, this, [this]() { continueTypeFlagsBackfill(); });
+            return;
+        }
+    }
+
+    setUpdatesEnabled(true);
+    m_typeFlagsBackfillRow = -1;
 }
 
 QString ClipboardBrowser::groupTitle(const QString &name, bool collapsed) const
@@ -421,7 +724,10 @@ void ClipboardBrowser::setEditorWidget(ItemEditorWidget *editor, bool changeClip
             ? Qt::ScrollBarAlwaysOff
             : m_sharedData->theme.scrollbarPolicy();
     setVerticalScrollBarPolicy(scrollbarPolicy);
-    setHorizontalScrollBarPolicy(scrollbarPolicy);
+    // Items are wrapped to the view width, so the horizontal scrollbar would
+    // only show up for content that cannot fit (and looks broken).
+    setHorizontalScrollBarPolicy(
+        m_sharedData->textWrap ? Qt::ScrollBarAlwaysOff : scrollbarPolicy);
 }
 
 void ClipboardBrowser::editItem(
@@ -493,11 +799,22 @@ void ClipboardBrowser::connectModelAndDelegate()
     connect( &m, &QAbstractItemModel::rowsInserted,
              this, &ClipboardBrowser::onRowsInserted);
     connect( &m, &QAbstractItemModel::rowsRemoved,
-             this, [this]() { applyGroupFolding(); } );
+             this, [this](const QModelIndex &, int first, int last) {
+                 removeRowFlags(first, last);
+                 scheduleGroupFolding();
+             } );
     connect( &m, &QAbstractItemModel::rowsMoved,
-             this, [this]() { applyGroupFolding(); } );
+             this, [this](const QModelIndex &, int, int, const QModelIndex &, int) {
+                 // Row positions changed - drop the cached properties.
+                 m_rowFlags.clear();
+                 m_rowFlags.resize(length(), 0);
+                 scheduleGroupFolding();
+             } );
     connect( &m, &QAbstractItemModel::dataChanged,
-             this, [this]() { applyGroupFolding(); } );
+             this, [this](const QModelIndex &topLeft, const QModelIndex &bottomRight) {
+                 invalidateRowFlags(topLeft.row(), bottomRight.row());
+                 scheduleGroupFolding();
+             } );
 
     // Item count change
     connect( &m, &QAbstractItemModel::rowsInserted,
@@ -680,10 +997,69 @@ void ClipboardBrowser::dragDropScroll()
     }
 }
 
+namespace {
+
+/// Adds the file or image data if the item contains only paths.
+///
+/// Some applications (e.g. WeChat) put just a path to a temporary file on the
+/// clipboard. Pasting such an item back as text is useless, so the files are
+/// offered as a "text/uri-list" flavor (a file drop) and images are offered as
+/// an image flavor as well.
+void addLocalFileData(QVariantMap *data)
+{
+    const QStringList paths = itemType::localPathsFromText(getTextData(*data));
+    if ( paths.isEmpty() )
+        return;
+
+    QByteArray uriList;
+    QByteArray imageBytes;
+    QString imageMime;
+
+    for ( const auto &path : paths ) {
+        QFileInfo info(path);
+        if ( !info.exists() )
+            continue;
+
+        const QByteArray uri = QUrl::fromLocalFile(info.absoluteFilePath())
+                .toEncoded(QUrl::FullyEncoded);
+        if ( !uri.isEmpty() )
+            uriList += uri + '\n';
+
+        if ( paths.size() == 1 && imageMime.isEmpty() ) {
+            imageMime = itemType::imageMimeFromPath(path);
+            if ( !imageMime.isEmpty() ) {
+                QFile file(path);
+                if ( file.open(QIODevice::ReadOnly) )
+                    imageBytes = file.readAll();
+            }
+        }
+    }
+
+    if ( !uriList.isEmpty() && !data->contains(mimeUriList) )
+        (*data)[mimeUriList] = uriList;
+
+    if ( !imageMime.isEmpty() && !imageBytes.isEmpty() ) {
+        bool hasImage = false;
+        for (auto it = data->constBegin(); it != data->constEnd(); ++it) {
+            if ( it.key().startsWith(QLatin1String("image/")) ) {
+                hasImage = true;
+                break;
+            }
+        }
+        if (!hasImage)
+            data->insert(imageMime, imageBytes);
+    }
+}
+
+} // namespace
+
 QVariantMap ClipboardBrowser::copyIndex(const QModelIndex &index) const
 {
     auto data = index.data(contentType::data).toMap();
-    return m_itemSaver ? m_itemSaver->copyItem(m, data) : data;
+    if (m_itemSaver)
+        data = m_itemSaver->copyItem(m, data);
+    addLocalFileData(&data);
+    return data;
 }
 
 QVariantMap ClipboardBrowser::copyIndexes(const QModelIndexList &indexes) const
@@ -830,6 +1206,8 @@ void ClipboardBrowser::onRowsInserted(const QModelIndex &, int first, int last)
 {
     QModelIndex current;
     QItemSelection selection;
+
+    insertRowFlags(first, last - first + 1);
 
     // Select new items only if explicitly asked for
     // or select new top item when not actively using the item list.
@@ -1776,6 +2154,8 @@ void ClipboardBrowser::setItemsData(const QMap<QPersistentModelIndex, QVariantMa
 
 bool ClipboardBrowser::loadItems(const QByteArray &itemData)
 {
+    m_typeFlagsBackfillRow = -1;
+
     if ( isLoaded() )
         return true;
 
@@ -1794,7 +2174,10 @@ bool ClipboardBrowser::loadItems(const QByteArray &itemData)
     }
 
     d.rowsInserted(QModelIndex(), 0, m.rowCount());
+    m_rowFlags.clear();
+    m_rowFlags.resize(m.rowCount(), 0);
     applyGroupFolding();
+    startTypeFlagsBackfill();
     if ( hasFocus() )
         setCurrent(0);
     onItemCountChanged();
@@ -1915,14 +2298,16 @@ void ClipboardBrowser::removeSelectedFromGroup()
     move(indexes, 0);
 }
 
-int ClipboardBrowser::visiblePasteRow(int nth) const
+int ClipboardBrowser::pasteRow(int nth) const
 {
     if (nth < 0)
         return -1;
 
+    // Ignore the item type filter - "paste item N" always pastes the nth item
+    // of the whole history. Only group headers are skipped.
     int seen = 0;
     for (int row = 0; row < length(); ++row) {
-        if (isRowHidden(row) || isGroupRow(row))
+        if (isGroupRow(row))
             continue;
         if (seen == nth)
             return row;
@@ -1951,7 +2336,7 @@ void ClipboardBrowser::moveToClipboard()
 
 void ClipboardBrowser::delayedSaveItems(int ms)
 {
-    if ( !isLoaded() || tabName().isEmpty() || ms < 0 )
+    if ( m_suppressSave > 0 || !isLoaded() || tabName().isEmpty() || ms < 0 )
         return;
 
     if ( !m_timerSave.isActive() || ms < m_timerSave.remainingTime() )

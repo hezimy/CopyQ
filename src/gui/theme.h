@@ -54,6 +54,9 @@ public:
     /** Decorate main window. */
     void decorateMainWindow(QWidget *mainWindow) const;
 
+    /** Apply the theme colors (not the main window layout) to a dialog. */
+    void decorateDialog(QWidget *dialog) const;
+
     /** Decorate scroll area (toggle scroll bar). */
     void decorateScrollArea(QAbstractScrollArea *scrollArea) const;
 
@@ -74,6 +77,9 @@ public:
     bool isAntialiasingEnabled() const;
 
     void resetTheme();
+
+    /// Applies the bundled default theme over the fallback values.
+    void applyDefaultThemeFile();
 
     void updateTheme();
 

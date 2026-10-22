@@ -279,8 +279,8 @@ ItemEditorWidget *ItemDelegate::createCustomEditor(
     if ( (format == mimeText || format == mimeTextUtf8 || format == mimeHtml)
          && data.contains(mimeHtml) )
     {
-        const QString html = getTextData(data, mimeHtml);
-        editor->setHtml(html);
+        QString html = getTextData(data, mimeHtml);
+        editor->setHtml(sanitizeHtmlForDisplay(html));
     } else {
         const QString text = getTextData(data, format);
         editor->setPlainText(text);

@@ -269,6 +269,18 @@ void IconButton::paintEvent(QPaintEvent *)
     if (m_hasMenu)
         pixmapRect.setWidth( pixmapRect.width() - 2 );
 
+    // Do not scale the icon to the whole button - it would be too big for the
+    // line edit. Keep it about as tall as the text.
+    const int maxIconSize = qMax(8, fontMetrics().height() - 2);
+    if (pixmapRect.width() > maxIconSize || pixmapRect.height() > maxIconSize) {
+        const int side = qMin(maxIconSize, qMin(pixmapRect.width(), pixmapRect.height()));
+        pixmapRect = QRect(
+            pixmapRect.x() + (pixmapRect.width() - side) / 2,
+            pixmapRect.y() + (pixmapRect.height() - side) / 2,
+            side, side
+        );
+    }
+
     QStylePainter painter(this);
     m_icon.paint(&painter, pixmapRect);
 

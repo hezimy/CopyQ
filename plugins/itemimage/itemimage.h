@@ -42,6 +42,8 @@ private:
     void stopAnimation();
 
     QPixmap m_pixmap;
+    QPixmap m_scaledPixmap;
+    QSize m_scaledSize;
     QByteArray m_animationData;
     QByteArray m_animationFormat;
     QMovie *m_animation;

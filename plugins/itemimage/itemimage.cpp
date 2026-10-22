@@ -116,13 +116,43 @@ ItemImage::ItemImage(
     setPixmap(pix);
 }
 
-void ItemImage::updateSize(QSize, int)
+void ItemImage::updateSize(QSize maximumSize, int)
 {
     const auto m2 = 2 * margin();
     const auto ratio = pixelRatio(this);
-    const int w = (m_pixmap.width() + 1) / ratio + m2;
-    const int h = (m_pixmap.height() + 1) / ratio + m2;
-    setFixedSize( QSize(w, h) );
+    const QSize imageSize(
+        (m_pixmap.width() + 1) / ratio,
+        (m_pixmap.height() + 1) / ratio
+    );
+
+    // Scale the image down to fit the view, otherwise a large image makes the
+    // item (and the whole list) wider than the window and a horizontal
+    // scrollbar appears.
+    QSize size = imageSize;
+    if (maximumSize.isValid()) {
+        const int maxWidth = maximumSize.width() - m2;
+        if (maxWidth > 0 && size.width() > maxWidth) {
+            size = size.scaled(QSize(maxWidth, maximumSize.height()),
+                               Qt::KeepAspectRatio);
+        }
+    }
+
+    if (size == m_scaledSize && !m_scaledPixmap.isNull())
+        return;
+
+    m_scaledSize = size;
+
+    if (size == imageSize) {
+        m_scaledPixmap = QPixmap();
+        setPixmap(m_pixmap);
+    } else {
+        m_scaledPixmap = m_pixmap.scaled(size, Qt::KeepAspectRatio,
+                                         Qt::SmoothTransformation);
+        m_scaledPixmap.setDevicePixelRatio(1.0);
+        setPixmap(m_scaledPixmap);
+    }
+
+    setFixedSize(size + QSize(m2, m2));
 }
 
 void ItemImage::setCurrent(bool current)

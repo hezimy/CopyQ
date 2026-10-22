@@ -37,3 +37,11 @@ QVariantMap createDataMap(const QString &format, const QString &value);
 
 /// Returns text without accents/diacritics.
 QString accentsRemoved(const QString &text);
+
+/// Removes zero-width characters (they make Qt's text layout extremely slow).
+QString removeZeroWidthCharacters(QString text);
+
+/// Removes constructs that make Qt's HTML rendering extremely slow:
+/// font-family declarations with fonts that are not installed and
+/// zero-width characters.
+QString sanitizeHtmlForDisplay(QString html);

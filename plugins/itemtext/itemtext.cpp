@@ -58,6 +58,7 @@ bool getRichText(const QVariantMap &dataMap, QString *text)
 QString normalizeText(QString text)
 {
     removeTrailingNull(&text);
+    text = removeZeroWidthCharacters(text);
     return text.left(maxCharacters);
 }
 
@@ -232,6 +233,9 @@ ItemWidget *ItemTextLoader::create(const QVariantMap &data, QWidget *parent, boo
 
     if (!isRichText && !isPlainText)
         return nullptr;
+
+    if (isRichText)
+        richText = sanitizeHtmlForDisplay(richText);
 
     richText = normalizeText(richText);
     text = normalizeText(text);

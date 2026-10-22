@@ -5,6 +5,7 @@
 #include "common/mimetypes.h"
 
 #include <QLocale>
+#include <QRegularExpression>
 #include <QString>
 #include <QVariantMap>
 
@@ -31,6 +32,25 @@ bool isPluginFormat(const QString &mime)
 }
 
 } // namespace
+
+QString removeZeroWidthCharacters(QString text)
+{
+    for (const auto ch : {QChar(0x200b), QChar(0x200c), QChar(0x200d), QChar(0xfeff)})
+        text.remove(ch);
+    return text;
+}
+
+QString sanitizeHtmlForDisplay(QString html)
+{
+    // Resolving a long list of font families that are not installed (typical
+    // for content copied from web pages or office applications) can take tens
+    // of seconds in QTextDocument::setHtml().
+    static const QRegularExpression fontFamilyRe(
+        QStringLiteral("font-family\\s*:\\s*[^;]*(\"[^\"]*\"[^;]*)*;"),
+        QRegularExpression::CaseInsensitiveOption);
+    html.remove(fontFamilyRe);
+    return removeZeroWidthCharacters(html);
+}
 
 uint hash(const QVariantMap &data)
 {

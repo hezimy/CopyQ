@@ -363,6 +363,27 @@ You can set up the command in preferences.</source>
 <context>
     <name>ClipboardDialog</name>
     <message>
+        <location filename="../src/gui/clipboarddialog.cpp"/>
+        <source>Zoom In</source>
+        <translation>放大</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/clipboarddialog.cpp"/>
+        <source>Zoom Out</source>
+        <translation>缩小</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/clipboarddialog.cpp"/>
+        <source>Original Size</source>
+        <translation>原始尺寸 (1:1)</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/clipboarddialog.cpp"/>
+        <source>&lt;strong&gt;%1 × %2&lt;/strong&gt; pixels</source>
+        <comment>Image dimensions</comment>
+        <translation>&lt;strong&gt;%1 × %2&lt;/strong&gt; 像素</translation>
+    </message>
+    <message>
         <location filename="../src/ui/clipboarddialog.ui" line="20"/>
         <source>Clipboard Content</source>
         <translation>剪贴板内容</translation>
@@ -2644,6 +2665,41 @@ Set to 0 to disable.</source>
 </context>
 <context>
     <name>MainWindow</name>
+    <message>
+        <location filename="../src/ui/mainwindow.ui"/>
+        <source>All</source>
+        <translation>全部</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/mainwindow.ui"/>
+        <source>Marked</source>
+        <translation>标记</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/mainwindow.ui"/>
+        <source>Files</source>
+        <translation>文件</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/mainwindow.ui"/>
+        <source>Text</source>
+        <translation>文字</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/mainwindow.ui"/>
+        <source>Image</source>
+        <translation>图片</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/mainwindow.ui"/>
+        <source>Text + Image</source>
+        <translation>图文混合</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/mainwindow.ui"/>
+        <source>Groups</source>
+        <translation>分组</translation>
+    </message>
     <message>
         <source>CopyQ</source>
         <translation type="vanished">CopyQ</translation>

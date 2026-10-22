@@ -24,11 +24,13 @@ class ActionDialog;
 class AppConfig;
 class ClipboardBrowser;
 class ClipboardBrowserPlaceholder;
+class ClipboardDialog;
 class CommandAction;
 class CommandDialog;
 class ConfigurationManager;
 class Notification;
 class QAction;
+class QButtonGroup;
 class QMimeData;
 class SystemTrayIcon;
 class Tabs;
@@ -535,6 +537,11 @@ private:
     void toggleItemGroup();
     void renameItemGroup();
 
+    /** Bottom bar that filters items by type (text, image, both, groups). */
+    void setupItemTypeFilterBar();
+    void onItemTypeFilterChanged(int filter);
+    void applyItemTypeFilter();
+
     void suppressReaddingClipboardData(const QVariantMap &data);
 
     void onBrowserCreated(ClipboardBrowser *browser);
@@ -718,6 +725,10 @@ private:
 
     MainWindowOptions m_options;
 
+    /// ClipboardBrowser::ItemTypeFilter value kept in sync with the bottom bar.
+    int m_itemTypeFilter = 0;
+    QButtonGroup *m_itemTypeFilterButtons = nullptr;
+
     bool m_clipboardStoringDisabled = false;
 
     ClipboardBrowserSharedPtr m_sharedData;
@@ -749,6 +760,10 @@ private:
     int m_menuMaxItemCount;
 
     QPointer<CommandDialog> m_commandDialog;
+
+    /// Content dialog is reused so that repeating the shortcut does not open
+    /// a new window every time.
+    QPointer<ClipboardDialog> m_itemContentDialog;
 
     bool m_wasMaximized = false;
 

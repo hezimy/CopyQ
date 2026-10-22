@@ -64,7 +64,12 @@
 #endif
 
 #include <QAction>
+#include <QButtonGroup>
 #include <QCloseEvent>
+#include "item/itemtypeflags.h"
+#include <QFileInfo>
+#include <QProcess>
+#include <QDir>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QFile>
@@ -769,6 +774,8 @@ MainWindow::MainWindow(const ClipboardBrowserSharedPtr &sharedData, QWidget *par
     , m_clipboard(platformNativeInterface()->clipboard())
 {
     ui->setupUi(this);
+
+    setupItemTypeFilterBar();
 
     m_sharedData->passwordPrompt = new PasswordPrompt(this);
     m_sharedData->menuItems = menuItems();
@@ -1575,6 +1582,63 @@ void MainWindow::renameItemGroup()
     c->renameGroup(c->currentIndex().row(), trimmed);
 }
 
+void MainWindow::setupItemTypeFilterBar()
+{
+    if (m_itemTypeFilterButtons)
+        return;
+
+    m_itemTypeFilterButtons = new QButtonGroup(this);
+    m_itemTypeFilterButtons->setExclusive(true);
+
+    const struct {
+        QToolButton *button;
+        ClipboardBrowser::ItemTypeFilter filter;
+    } entries[] = {
+        { ui->buttonFilterAll,    ClipboardBrowser::ItemTypeFilter::All },
+        { ui->buttonFilterPinned, ClipboardBrowser::ItemTypeFilter::Marked },
+        { ui->buttonFilterText,   ClipboardBrowser::ItemTypeFilter::Text },
+        { ui->buttonFilterImage,  ClipboardBrowser::ItemTypeFilter::Image },
+        { ui->buttonFilterMixed,  ClipboardBrowser::ItemTypeFilter::TextAndImage },
+        { ui->buttonFilterFile,   ClipboardBrowser::ItemTypeFilter::File },
+        { ui->buttonFilterGroup,  ClipboardBrowser::ItemTypeFilter::Group },
+    };
+
+    for (const auto &entry : entries) {
+        if (!entry.button)
+            continue;
+        entry.button->setAutoRaise(true);
+        m_itemTypeFilterButtons->addButton(
+            entry.button, static_cast<int>(entry.filter));
+    }
+
+    m_itemTypeFilter = static_cast<int>(ClipboardBrowser::ItemTypeFilter::All);
+    if (ui->buttonFilterAll)
+        ui->buttonFilterAll->setChecked(true);
+
+    connect(m_itemTypeFilterButtons, &QButtonGroup::idClicked,
+            this, &MainWindow::onItemTypeFilterChanged);
+}
+
+void MainWindow::onItemTypeFilterChanged(int filter)
+{
+    m_itemTypeFilter = filter;
+
+    // Keep the clicked filter selected: a checked tool button would uncheck
+    // itself when clicked again.
+    if (auto *button = m_itemTypeFilterButtons->button(filter))
+        button->setChecked(true);
+
+    applyItemTypeFilter();
+}
+
+void MainWindow::applyItemTypeFilter()
+{
+    if (auto *c = browserOrNull()) {
+        c->setItemTypeFilter(
+            static_cast<ClipboardBrowser::ItemTypeFilter>(m_itemTypeFilter));
+    }
+}
+
 void MainWindow::suppressReaddingClipboardData(const QVariantMap &data)
 {
     m_sharedData->suppressReaddHasText = data.contains(mimeText);
@@ -1604,7 +1668,7 @@ bool MainWindow::pasteClipboardItem(int indexFromZero)
     if (!c)
         return false;
 
-    const int row = c->visiblePasteRow(indexFromZero);
+    const int row = c->pasteRow(indexFromZero);
     if (row < 0)
         return false;
 
@@ -1631,6 +1695,9 @@ bool MainWindow::pasteClipboardItem(int indexFromZero)
 
 void MainWindow::onBrowserCreated(ClipboardBrowser *browser)
 {
+    browser->setItemTypeFilter(
+        static_cast<ClipboardBrowser::ItemTypeFilter>(m_itemTypeFilter));
+
     connect( browser, &ClipboardBrowser::changeClipboard,
              this, &MainWindow::setClipboardAndSelection );
     connect( browser, &ClipboardBrowser::requestShow,
@@ -3634,6 +3701,8 @@ void MainWindow::tabChanged(int current, int)
         // update item menu (necessary for keyboard shortcuts to work)
         auto c = browser();
         if (c) {
+            c->setItemTypeFilter(
+                static_cast<ClipboardBrowser::ItemTypeFilter>(m_itemTypeFilter));
             c->filterItems( browseMode() ? nullptr : ui->searchBar->filter() );
 
             if ( current >= 0 && !c->currentIndex().isValid() && isVisible() ) {
@@ -4471,8 +4540,40 @@ void MainWindow::showItemContent()
         return;
 
     const QModelIndex current = c->currentIndex();
-    if ( current.isValid() )
-        openDialog<ClipboardDialog>(current, c->model(), this);
+    if ( !current.isValid() )
+        return;
+
+    // A file is shown in the file manager (with the file selected) instead of
+    // showing its path as text.
+    const auto data = current.data(contentType::data).toMap();
+    const QString path = itemType::localPathFromText( getTextData(data) );
+    if ( !path.isEmpty()
+         && itemType::imagePathFromText(path).isEmpty()
+         && QFileInfo::exists(path) )
+    {
+        const QString nativePath = QDir::toNativeSeparators(path);
+        if ( QProcess::startDetached( QStringLiteral("explorer.exe"),
+                                      { QStringLiteral("/select,") + nativePath } ) )
+        {
+            return;
+        }
+    }
+
+    // The window is created once and reused. It is a normal top-level window
+    // (no parent, no geometry restore) so that it can be resized, minimized
+    // and moved behind other windows, and it always fits the shown image.
+    const QPersistentModelIndex index(current);
+    if (m_itemContentDialog) {
+        m_itemContentDialog->setIndex(index, c->model());
+    } else {
+        m_itemContentDialog = new ClipboardDialog(index, c->model(), nullptr);
+        m_itemContentDialog->setNavigationView(c);
+        m_itemContentDialog->setAttribute(Qt::WA_DeleteOnClose, true);
+        m_itemContentDialog->setWindowIcon(appIcon());
+        m_itemContentDialog->show();
+    }
+
+    raiseWindow(m_itemContentDialog);
 }
 
 void MainWindow::openPreferences()

@@ -70,3 +70,6 @@ uv.lock
 # Local Windows build output (fork)
 /dist/
 /aqtinstall.log
+/src/miniaudio/miniaudio.h
+/.workbuddy/
+/.tmpdiag/
